@@ -9,6 +9,7 @@ from PIL import Image
 import numpy as np
 from tqdm import tqdm
 import datetime
+import os.path as osp
 
 # Import from the VAR repository
 from models.vqvae import VQVAE
@@ -64,7 +65,6 @@ def normalize_01_into_pm1(x):  # normalize x from [0, 1] to [-1, 1]
 def main():
     parser = argparse.ArgumentParser(description='Finetune VQVAE on PAP data')
     parser.add_argument('--data_path', type=str, required=True, help='Path to PAP dataset')
-    parser.add_argument('--pretrained', type=str, default='vae_ch160v4096z32.pth', help='Path to pretrained VQVAE')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
@@ -72,6 +72,13 @@ def main():
     parser.add_argument('--image_size', type=int, default=256, help='Image size')
     parser.add_argument('--workers', type=int, default=4, help='Number of workers')
     args = parser.parse_args()
+    
+    # Download checkpoint
+    MODEL_DEPTH = 12  # You may need to adjust this variable based on your needs
+    hf_home = 'https://huggingface.co/FoundationVision/var/resolve/main'
+    vae_ckpt, var_ckpt = 'vae_ch160v4096z32.pth', f'var_d{MODEL_DEPTH}.pth'
+    if not osp.exists(vae_ckpt): os.system(f'wget {hf_home}/{vae_ckpt}')
+    if not osp.exists(var_ckpt): os.system(f'wget {hf_home}/{var_ckpt}')
     
     # Create save directory
     os.makedirs(args.save_dir, exist_ok=True)
@@ -144,12 +151,9 @@ def main():
         test_mode=False   # Set to False for training
     ).to(device)
     
-    # Load pretrained weights if available
-    if os.path.exists(args.pretrained):
-        print(f"Loading pretrained weights from {args.pretrained}")
-        model.load_state_dict(torch.load(args.pretrained, map_location=device), strict=True)
-    else:
-        print(f"No pretrained weights found at {args.pretrained}, starting from scratch")
+    # Load pretrained weights
+    print(f"Loading pretrained weights from {vae_ckpt}")
+    model.load_state_dict(torch.load(vae_ckpt, map_location=device), strict=True)
     
     # Set optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr)

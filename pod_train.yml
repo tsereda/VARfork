@@ -12,7 +12,7 @@ spec:
       image: gitlab-registry.nrp-nautilus.io/prp/jupyter-stack/prp
       env:
         - name: REPO_PATH
-          value: /opt/repo/VARfork
+          value: ~/VARfork
       command:
         - "bash"
         - "-c"
@@ -31,17 +31,15 @@ spec:
           pip install -r ${REPO_PATH}/requirements.txt
           pip install torch~=2.1.0 Pillow numpy
           
-          # --- Extract PAP dataset ---
+          sudo apt-get install p7zip-full
+          # --- Copy dataset .7z from PVC and Extract ---
           echo "Extracting PAP dataset..."
           mkdir -p ${HOME}/pap_data
-          if [ -f "/data/pap_data.tar" ]; then
-            echo "Found .tar file, extracting..."
-            tar -xf /data/pap_data.tar -C ${HOME}
-          else
-            echo "Searching for alternative archive formats..."
-            find /data -name "*.tar*" -o -name "*.zip" | head -1 | xargs -I {} bash -c "echo 'Extracting {}...' && if [[ {} == *.zip ]]; then unzip {} -d ${HOME}; else tar -xf {} -C ${HOME}; fi"
-          fi
-          
+          echo "Copying PAP dataset..."
+          cp /data/isbi2025-ps3c-train-dataset.7z .
+          echo "Extracting PAP dataset..."
+          7z x isbi2025-ps3c-train-dataset.7z -C ${HOME}
+
           # --- Run VQ-VAE finetuning ---
           echo "Starting VQ-VAE finetuning..."
           cd ${REPO_PATH}
@@ -99,7 +97,7 @@ spec:
       emptyDir: {}
     - name: pap-data-volume
       persistentVolumeClaim:
-        claimName: pap-data
+        claimName: pap-data1
     - name: dshm
       emptyDir:
         medium: Memory
