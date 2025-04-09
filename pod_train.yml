@@ -1,18 +1,18 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: pap-train-pod
+  name: var-finetune-pod
 spec:
   securityContext:
     runAsUser: 1000
     runAsGroup: 100
     fsGroup: 100
   containers:
-    - name: pap-processing
+    - name: var-finetune
       image: gitlab-registry.nrp-nautilus.io/prp/jupyter-stack/prp
       env:
         - name: REPO_PATH
-          value: /opt/repo/papGAN
+          value: /opt/repo/VARfork
       command:
         - "bash"
         - "-c"
@@ -22,51 +22,41 @@ spec:
           echo "Running as user: $(whoami), UID: $(id -u), GID: $(id -g)"
           
           # --- Git Repository Setup ---
-          echo "Setting up Git repository..."
+          echo "Setting up VAR repository..."
           cd ${REPO_PATH}
           git pull origin main || echo "Repository already exists, continuing"
           
-          # --- Install dependencies ---
+          # --- Install required dependencies ---
           echo "Installing required dependencies..."
-          pip install dominate visdom wandb
+          pip install -r ${REPO_PATH}/requirements.txt
+          pip install torch~=2.1.0 Pillow numpy
           
-          # --- Clone CycleGAN repository ---
-          echo "Cloning CycleGAN repository..."
-          git clone https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix.git
-          
-          # --- Install CycleGAN requirements ---
-          echo "Installing CycleGAN requirements..."
-          pip install -r ${REPO_PATH}/pytorch-CycleGAN-and-pix2pix/requirements.txt
-          
-          # In training pod args section:
-          # --- Extract with fast zstd decompression ---
-          apt-get update && apt-get install -y zstd
-          echo "Extracting preprocessed data..."
-          mkdir -p ${REPO_PATH}/cyclegan_dataset_256_split
-          if [ -f "/data/cyclegan_processed_data.tar.zst" ]; then
-            tar -x -I "zstd -d -T0" -f /data/cyclegan_processed_data.tar.zst -C ${REPO_PATH}
+          # --- Extract PAP dataset ---
+          echo "Extracting PAP dataset..."
+          mkdir -p ${HOME}/pap_data
+          if [ -f "/data/pap_data.tar" ]; then
+            echo "Found .tar file, extracting..."
+            tar -xf /data/pap_data.tar -C ${HOME}
           else
-            echo "Preprocessed data file not found, skipping extraction"
+            echo "Searching for alternative archive formats..."
+            find /data -name "*.tar*" -o -name "*.zip" | head -1 | xargs -I {} bash -c "echo 'Extracting {}...' && if [[ {} == *.zip ]]; then unzip {} -d ${HOME}; else tar -xf {} -C ${HOME}; fi"
           fi
           
-          # --- Run training with reduced batch size to avoid OOM errors ---
-          echo "Starting CycleGAN training..."
+          # --- Run VQ-VAE finetuning ---
+          echo "Starting VQ-VAE finetuning..."
           cd ${REPO_PATH}
-          python3 pytorch-CycleGAN-and-pix2pix/train.py \
-            --dataroot cyclegan_dataset_256_split/ \
-            --name healthy2unhealthy_cyclegan \
-            --model cycle_gan \
-            --batch_size 6 \
-            --gpu_ids 0,1,2,3,4,5 \
-            --n_epochs 40 \
-            --n_epochs_decay 20 \
-            --display_freq 100 \
-            --print_freq 100 \
-            --lambda_B 7.5 \
-            --lambda_A 7.5
+          python finetune_vqvae.py \
+            --data_path=${HOME}/pap_data \
+            --pretrained=vae_ch160v4096z32.pth \
+            --batch_size=32 \
+            --lr=1e-4 \
+            --epochs=50 \
+            --save_dir=${REPO_PATH}/pap_checkpoints \
+            --image_size=256 \
+            --workers=4
           
-          echo "Training completed or encountered an error."
-          echo "Pod is now idle. Connect with: kubectl exec -it pap-train-pod -- bash"
+          echo "Finetuning completed or encountered an error."
+          echo "Pod is now idle. Connect with: kubectl exec -it var-finetune-pod -- bash"
           sleep infinity
       volumeMounts:
         - name: git-repo
@@ -92,8 +82,8 @@ spec:
         - --single-branch
         - -b
         - main
-        - https://github.com/tsereda/papGAN
-        - /opt/repo/papGAN
+        - https://github.com/tsereda/VARfork.git
+        - /opt/repo/VARfork
       volumeMounts:
         - name: git-repo
           mountPath: /opt/repo
