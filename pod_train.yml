@@ -31,21 +31,19 @@ spec:
           pip install -r ${REPO_PATH}/requirements.txt
           pip install torch~=2.1.0 Pillow numpy
           
+          sudo apt-get update
           sudo apt-get install p7zip-full
           # --- Copy dataset .7z from PVC and Extract ---
-          echo "Extracting PAP dataset..."
-          mkdir -p ${HOME}/pap_data
-          echo "Copying PAP dataset..."
+          echo "Copying PAP dataset 7z..."
           cp /data/isbi2025-ps3c-train-dataset.7z .
           echo "Extracting PAP dataset..."
-          7z x isbi2025-ps3c-train-dataset.7z -C ${HOME}
+          7z x ~/isbi2025-ps3c-train-dataset.7z -o/opt/repo/VARfork/isbi2025-ps3c-train-dataset
 
           # --- Run VQ-VAE finetuning ---
           echo "Starting VQ-VAE finetuning..."
           cd ${REPO_PATH}
           python finetune_vqvae.py \
             --data_path=${HOME}/pap_data \
-            --pretrained=vae_ch160v4096z32.pth \
             --batch_size=32 \
             --lr=1e-4 \
             --epochs=50 \
