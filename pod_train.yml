@@ -69,11 +69,11 @@ spec:
         limits:
           memory: 30Gi
           cpu: "16"
-          nvidia.com/gpu: "6"
+          nvidia.com/gpu: "2"
         requests:
           memory: 24Gi
           cpu: "12"
-          nvidia.com/gpu: "6"
+          nvidia.com/gpu: "2"
   initContainers:
     - name: init-git-repo
       image: alpine/git
