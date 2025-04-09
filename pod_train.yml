@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pap-train-pod
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 100
+    fsGroup: 100
+  containers:
+    - name: pap-processing
+      image: gitlab-registry.nrp-nautilus.io/prp/jupyter-stack/prp
+      env:
+        - name: REPO_PATH
+          value: /opt/repo/papGAN
+      command:
+        - "bash"
+        - "-c"
+      args:
+        - |
+          # --- User and Environment Setup ---
+          echo "Running as user: $(whoami), UID: $(id -u), GID: $(id -g)"
+          
+          # --- Git Repository Setup ---
+          echo "Setting up Git repository..."
+          cd ${REPO_PATH}
+          git pull origin main || echo "Repository already exists, continuing"
+          
+          # --- Install dependencies ---
+          echo "Installing required dependencies..."
+          pip install dominate visdom wandb
+          
+          # --- Clone CycleGAN repository ---
+          echo "Cloning CycleGAN repository..."
+          git clone https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix.git
+          
+          # --- Install CycleGAN requirements ---
+          echo "Installing CycleGAN requirements..."
+          pip install -r ${REPO_PATH}/pytorch-CycleGAN-and-pix2pix/requirements.txt
+          
+          # In training pod args section:
+          # --- Extract with fast zstd decompression ---
+          apt-get update && apt-get install -y zstd
+          echo "Extracting preprocessed data..."
+          mkdir -p ${REPO_PATH}/cyclegan_dataset_256_split
+          if [ -f "/data/cyclegan_processed_data.tar.zst" ]; then
+            tar -x -I "zstd -d -T0" -f /data/cyclegan_processed_data.tar.zst -C ${REPO_PATH}
+          else
+            echo "Preprocessed data file not found, skipping extraction"
+          fi
+          
+          # --- Run training with reduced batch size to avoid OOM errors ---
+          echo "Starting CycleGAN training..."
+          cd ${REPO_PATH}
+          python3 pytorch-CycleGAN-and-pix2pix/train.py \
+            --dataroot cyclegan_dataset_256_split/ \
+            --name healthy2unhealthy_cyclegan \
+            --model cycle_gan \
+            --batch_size 6 \
+            --gpu_ids 0,1,2,3,4,5 \
+            --n_epochs 40 \
+            --n_epochs_decay 20 \
+            --display_freq 100 \
+            --print_freq 100 \
+            --lambda_B 7.5 \
+            --lambda_A 7.5
+          
+          echo "Training completed or encountered an error."
+          echo "Pod is now idle. Connect with: kubectl exec -it pap-train-pod -- bash"
+          sleep infinity
+      volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+        - name: pap-data-volume
+          mountPath: /data
+        - name: dshm
+          mountPath: /dev/shm
+      resources:
+        limits:
+          memory: 30Gi
+          cpu: "16"
+          nvidia.com/gpu: "6"
+        requests:
+          memory: 24Gi
+          cpu: "12"
+          nvidia.com/gpu: "6"
+  initContainers:
+    - name: init-git-repo
+      image: alpine/git
+      args:
+        - clone
+        - --single-branch
+        - -b
+        - main
+        - https://github.com/tsereda/papGAN
+        - /opt/repo/papGAN
+      volumeMounts:
+        - name: git-repo
+          mountPath: /opt/repo
+      resources:
+        limits:
+          memory: 512Mi
+          cpu: 500m
+        requests:
+          memory: 256Mi
+          cpu: 200m
+  volumes:
+    - name: git-repo
+      emptyDir: {}
+    - name: pap-data-volume
+      persistentVolumeClaim:
+        claimName: pap-data
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+  restartPolicy: Never
