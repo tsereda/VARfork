@@ -35,9 +35,9 @@ spec:
           sudo apt-get install p7zip-full
           # --- Copy dataset .7z from PVC and Extract ---
           echo "Copying PAP dataset 7z..."
-          cp /data/isbi2025-ps3c-train-dataset.7z .
+          cp /data/isbi2025-ps3c-train-dataset.7z /opt/repo/VARfork/isbi2025-ps3c-train-dataset.7z
           echo "Extracting PAP dataset..."
-          7z x ~/isbi2025-ps3c-train-dataset.7z -o/opt/repo/VARfork/isbi2025-ps3c-train-dataset
+          7z x /opt/repo/VARfork/isbi2025-ps3c-train-dataset.7z -o/opt/repo/VARfork/isbi2025-ps3c-train-dataset
 
           # --- Run VQ-VAE finetuning ---
           echo "Starting VQ-VAE finetuning..."
